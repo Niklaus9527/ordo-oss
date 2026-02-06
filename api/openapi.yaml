@@ -1,0 +1,174 @@
+openapi: 3.0.3
+info:
+  title: Ordo API
+  version: v0.1.0
+servers:
+  - url: http://localhost:8080
+paths:
+  /v1/executions:
+    post:
+      summary: Submit an execution
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitRequest'
+      responses:
+        '200':
+          description: Submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmitResponse'
+  /v1/executions/{task_id}:
+    get:
+      summary: Get execution detail
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Execution detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Execution'
+  /v1/executions/{task_id}/stream:
+    get:
+      summary: SSE stream for execution (Mode=STREAM)
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: text/event-stream
+  /v1/workflows/{workflow_id}/capacity:
+    get:
+      summary: Get capacity snapshot for a workflow version
+      parameters:
+        - name: workflow_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: version
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Capacity snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapacitySnapshot'
+
+components:
+  schemas:
+    SubmitRequest:
+      type: object
+      required: [workflow_id, version, mode, inputs]
+      properties:
+        workflow_id: { type: string }
+        version: { type: string }
+        mode: { type: string, enum: [SYNC, ASYNC, STREAM] }
+        routing:
+          type: object
+          additionalProperties: true
+        inputs:
+          type: object
+          additionalProperties: true
+    SubmitResponse:
+      type: object
+      required: [task_id, accepted]
+      properties:
+        task_id: { type: string }
+        accepted: { type: boolean }
+        queued: { type: boolean }
+        deployment_id: { type: string }
+        reject_reason: { type: string, enum: [NO_CAPACITY, QUEUE_FULL] }
+    Execution:
+      type: object
+      required: [task_id, workflow_id, version, deployment_id, status, created_at, updated_at]
+      properties:
+        task_id: { type: string }
+        workflow_id: { type: string }
+        version: { type: string }
+        deployment_id: { type: string }
+        status: { type: string, enum: [PENDING, RUNNING, SUCCEEDED, FAILED] }
+        created_at: { type: integer }
+        updated_at: { type: integer }
+        stages:
+          type: array
+          items:
+            $ref: '#/components/schemas/StageState'
+        outputs:
+          $ref: '#/components/schemas/Outputs'
+        error:
+          $ref: '#/components/schemas/ExecutionError'
+    StageState:
+      type: object
+      required: [stage_id, status]
+      properties:
+        stage_id: { type: string }
+        status: { type: string, enum: [PENDING, RUNNING, SUCCEEDED, FAILED] }
+        artifacts:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ArtifactRef'
+        metadata:
+          type: object
+          additionalProperties: true
+        error:
+          $ref: '#/components/schemas/ExecutionError'
+    Outputs:
+      type: object
+      properties:
+        artifacts:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ArtifactRef'
+        metadata:
+          type: object
+          additionalProperties: true
+    ArtifactRef:
+      type: object
+      required: [uri]
+      properties:
+        uri: { type: string }
+        content_type: { type: string }
+        size_bytes: { type: integer }
+        checksum: { type: string }
+        metadata:
+          type: object
+          additionalProperties: true
+    ExecutionError:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+        stage_id: { type: string }
+    CapacitySnapshot:
+      type: object
+      required: [workflow_id, version, deployments, ts]
+      properties:
+        workflow_id: { type: string }
+        version: { type: string }
+        ts: { type: integer }
+        deployments:
+          type: array
+          items:
+            type: object
+            required: [deployment_id, slots, inflight, queue_size, queue_depth]
+            properties:
+              deployment_id: { type: string }
+              slots: { type: integer }
+              inflight: { type: integer }
+              queue_size: { type: integer }
+              queue_depth: { type: integer }
+              available_slots: { type: integer }
+              status: { type: string }
